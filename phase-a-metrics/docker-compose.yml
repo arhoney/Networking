@@ -11,25 +11,21 @@ services:
   # Authenticates to the Omada Controller's local /api/v2 endpoint using a
   # read-only viewer account. Exposes per-client RSSI and AP stats as
   # Prometheus metrics at :9202/metrics, scraped every 10 seconds.
-  #
-  # Credentials: set OMADA_HOST, OMADA_USER, OMADA_PASS, and OMADA_SITE
-  # in a .env file in this directory (never commit that file to git).
+  # NOTE: Management API is on port 443 (not 8043) for hardware controllers.
   # ─────────────────────────────────────────────────────────────────────────
   omada-exporter:
-    image: chhaley/omada-exporter:latest
+    image: chhaley/omada_exporter:latest
     container_name: omada-exporter
     restart: unless-stopped
     networks:
       - monitoring-plane
     ports:
-      # Prometheus scrapes this port. Localhost-only — not reachable from LAN.
       - "127.0.0.1:9202:9202"
     environment:
       - OMADA_HOST=${OMADA_HOST}
       - OMADA_USER=${OMADA_USER}
       - OMADA_PASS=${OMADA_PASS}
       - OMADA_SITE=${OMADA_SITE:-Default}
-      # Allow the controller's self-signed TLS certificate (standard for local Omada installs)
       - OMADA_INSECURE=true
 
   # ─────────────────────────────────────────────────────────────────────────

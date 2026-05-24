@@ -1,0 +1,6 @@
+# Credentials — never commit
+**/.env
+
+# Cloned third-party exporter source repos
+omada-controller-exporter/
+omada-exporter-go/

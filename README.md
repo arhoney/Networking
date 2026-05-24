@@ -25,7 +25,7 @@ AT&T BGW210-700 (IP Passthrough)
         │ 2.5 Gbps backhaul                        │
         ▼                                          │
    2.5G Switch                             Omada Controller
-   ├── Port 1 → Router uplink              (metrics API :8043)
+   ├── Port 1 → Router uplink              (metrics API :443)
    ├── Port 2 → 1G Switch → Upstairs AP          │
    ├── Port 3 → Downstairs AP                    │
    ├── Port 4 → Omada Controller          ◄───────┘
@@ -122,6 +122,36 @@ ntopng is accessible **only via SSH tunnel** (see the guide for the exact comman
 | Omada read-only API account | The exporter cannot change any network configuration |
 
 Remote access is handled exclusively through a private VPN mesh (WireGuard or Tailscale) or an SSH tunnel — never by opening ports on the public router.
+
+---
+
+## Hardware Controller Notes
+
+If you are running an Omada **hardware controller** (OC200, OC300) rather than the software controller, two things differ from the standard guide:
+
+| Item | Software Controller | Hardware Controller |
+|------|--------------------|--------------------|
+| Management API port | `8043` | `443` |
+| Firmware upgrade port | `8043` | `8043` (upgrade only, not API) |
+| Auth endpoint | `/api/v2/login` on `:8043` | `/api/v2/login` on `:443` |
+
+Set `OMADA_HOST=https://<controller-ip>:443` in `.env` — not `:8043`.
+
+### NordVPN / VPN users
+
+If NordVPN (or any VPN using a `nordlynx`/WireGuard interface) is active on the monitoring server, it will intercept LAN traffic and route it through the VPN tunnel, making the controller unreachable. Fix:
+
+```bash
+nordvpn set lan-discovery enabled
+# or
+nordvpn whitelist add subnet 192.168.0.0/24
+```
+
+Confirm routing is via your LAN interface, not the VPN:
+
+```bash
+ip route get <controller-ip>   # should show dev eth0/enp*, not dev nordlynx
+```
 
 ---
 
