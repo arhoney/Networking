@@ -1,0 +1,50 @@
+# Prometheus Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# 10-second scrape resolution is deliberately tight. A client mid-flap between
+# access points (e.g., bouncing between channels 100 and 36 in under 60 seconds)
+# can complete a full roaming loop in under two Prometheus scrape cycles at 15s.
+# At 10s, we guarantee at least 5-6 data points per roaming event, giving the
+# RSSI time series enough resolution to show the exact drop profile.
+#
+# After any change to this file, restart Prometheus:
+#   docker compose restart prometheus
+# ─────────────────────────────────────────────────────────────────────────────
+
+global:
+  # Primary scrape cadence — matched to the evaluation interval for consistency.
+  scrape_interval: 10s
+  scrape_timeout: 8s
+  evaluation_interval: 10s
+
+scrape_configs:
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Job: omada
+  # Scrapes chhaley/omada-exporter for all Omada network metrics.
+  # The exporter reads from /api/v2/sites/{site}/clients on the local controller.
+  #
+  # Key metrics exposed:
+  #   omada_client_rssi_dbm         – signal strength per wireless client (dBm)
+  #   omada_client_signal_level_pct – RSSI expressed as 0–100% quality score
+  #   omada_station_wireless        – 1 if client is wireless, 0 if wired
+  #   omada_station_wireless_mode   – Wi-Fi mode (4=802.11n, 5=802.11ac, 6=802.11ax)
+  #
+  # Labels on each metric include: ap_name, ap_address, name (hostname), ssid, station (MAC)
+  # Example filter in Grafana: omada_client_rssi_dbm{name="iPhone"}
+  # ───────────────────────────────────────────────────────────────────────────
+  - job_name: "omada"
+    static_configs:
+      - targets:
+          # chhaley/omada-exporter listens on 9202 (not 9200).
+          # Docker DNS resolves "omada-exporter" to the container's internal IP.
+          - "omada-exporter:9202"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Job: prometheus (self-monitoring)
+  # Confirms Prometheus is scraping successfully. Visible in Grafana as
+  # scrape_duration_seconds and up{job="prometheus"}.
+  # ───────────────────────────────────────────────────────────────────────────
+  - job_name: "prometheus"
+    static_configs:
+      - targets:
+          - "localhost:9090"

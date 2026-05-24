@@ -1,0 +1,28 @@
+# Grafana Dashboard Provisioning
+# ─────────────────────────────────────────────────────────────────────────────
+# This file tells Grafana where to find dashboard JSON files and how to load
+# them. Any .json file placed in the folder below is automatically imported
+# on startup.
+#
+# You can still edit dashboards in the Grafana UI, but changes will be
+# overwritten if you restart Grafana (because provisioned dashboards are
+# treated as read-only sources of truth). To make permanent edits, update
+# the JSON file instead.
+# ─────────────────────────────────────────────────────────────────────────────
+
+apiVersion: 1
+
+providers:
+  - name: Omada
+    # A unique identifier for this provider — used internally by Grafana.
+    orgId: 1
+    folder: Omada
+    folderUid: omada
+    type: file
+    # Grafana will rescan this directory every 30 seconds for new or changed files.
+    updateIntervalSeconds: 30
+    options:
+      # Path inside the container. This maps to:
+      #   ./grafana/provisioning/dashboards/ on the host
+      # (set up via the volume mount in docker-compose.yml)
+      path: /etc/grafana/provisioning/dashboards

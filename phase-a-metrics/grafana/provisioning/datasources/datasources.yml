@@ -1,0 +1,53 @@
+# Grafana Datasource Provisioning
+# ─────────────────────────────────────────────────────────────────────────────
+# This file is read by Grafana on startup. It automatically connects Grafana
+# to Prometheus (for metrics) and Loki (for logs) so you never have to
+# configure them manually through the UI.
+#
+# If you change a value here, restart Grafana to apply it:
+#   docker compose restart grafana
+# ─────────────────────────────────────────────────────────────────────────────
+
+apiVersion: 1
+
+datasources:
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Prometheus — the source of all metrics (RSSI, retry rates, bandwidth, etc.)
+  #
+  # Uses the Docker service name "prometheus" as the hostname. Docker's
+  # internal DNS resolves this to the correct container automatically.
+  # ───────────────────────────────────────────────────────────────────────────
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    url: http://prometheus:9090
+    access: proxy
+    isDefault: true
+    jsonData:
+      # How far back Grafana will look when opening a new dashboard panel.
+      timeInterval: "15s"
+      # Enable HTTP method POST for large queries (avoids URL length limits).
+      httpMethod: POST
+    editable: false
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Loki — the source of all log events (roaming events, client connections, etc.)
+  #
+  # Uses the Docker service name "loki" as the hostname.
+  # ───────────────────────────────────────────────────────────────────────────
+  - name: Loki
+    type: loki
+    uid: loki
+    url: http://loki:3100
+    access: proxy
+    jsonData:
+      # Link Loki log lines to Prometheus metrics for correlated investigation.
+      # When viewing a log line in Grafana, you can jump directly to the
+      # Prometheus metric for that client at the same timestamp.
+      derivedFields:
+        - datasourceUid: prometheus
+          matcherRegex: 'STA\(([0-9a-f:]{17})\)'
+          name: ClientMAC
+          url: '$${__value.raw}'
+    editable: false

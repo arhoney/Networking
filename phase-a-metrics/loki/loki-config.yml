@@ -1,0 +1,121 @@
+# Grafana Loki Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Loki is the log aggregation component of this stack. It does two things:
+#   1. Listens on UDP port 1514 for syslog messages from the Omada Controller
+#   2. Stores those log lines locally so Grafana can search and visualise them
+#
+# After any change to this file, restart Loki:
+#   docker compose restart loki
+# ─────────────────────────────────────────────────────────────────────────────
+
+auth_enabled: false
+
+server:
+  # Loki's HTTP API port. Grafana uses this to run log queries.
+  http_listen_port: 3100
+  # Disable gRPC — not needed for this single-node setup.
+  grpc_listen_port: 0
+  log_level: warn
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ingester — responsible for accepting and batching incoming log entries
+# before writing them to storage.
+# ─────────────────────────────────────────────────────────────────────────────
+ingester:
+  lifecycler:
+    address: 127.0.0.1
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+    final_sleep: 0s
+  # How long Loki keeps a log chunk in memory before flushing it to disk.
+  # 5 minutes is a sensible default for home-lab volumes.
+  chunk_idle_period: 5m
+  chunk_retain_period: 30s
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Schema — defines how Loki organises log data on disk.
+# Do not change this once you have data — it will break existing indexes.
+# ─────────────────────────────────────────────────────────────────────────────
+schema_config:
+  configs:
+    - from: "2024-01-01"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Storage — all data is stored on a local Docker volume (mounted at /loki).
+# ─────────────────────────────────────────────────────────────────────────────
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  filesystem:
+    directory: /loki/chunks
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Limits — keeps resource usage under control on a home-lab server.
+# ─────────────────────────────────────────────────────────────────────────────
+limits_config:
+  # Reject log entries that arrive more than 1 hour out of order.
+  # Omada syslog timestamps are reliable so this is generous.
+  reject_old_samples: true
+  reject_old_samples_max_age: 1h
+  # Allow a single stream to burst up to 4 MB/s (more than enough for syslog).
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 8
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Compactor — runs periodic background jobs to merge and deduplicate index files.
+# ─────────────────────────────────────────────────────────────────────────────
+compactor:
+  working_directory: /loki/compactor
+  # Delete chunks older than 90 days to manage disk space.
+  retention_enabled: true
+  retention_delete_delay: 2h
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Query Range — controls caching behaviour for the Grafana query engine.
+# ─────────────────────────────────────────────────────────────────────────────
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ruler — alerting rules engine (disabled for this setup).
+# ─────────────────────────────────────────────────────────────────────────────
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Receivers — this is the critical section that makes Loki listen for syslog.
+#
+# The Omada Controller sends syslog over UDP. This block tells Loki to listen
+# on port 1514 and attach a label {job="omada-syslog"} to every message
+# so you can filter for it in Grafana with: {job="omada-syslog"}
+# ─────────────────────────────────────────────────────────────────────────────
+frontend:
+  encoding: protobuf
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory

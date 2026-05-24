@@ -1,0 +1,97 @@
+# Promtail Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Promtail sits between the Omada Controller's syslog output and Loki's storage.
+#
+# Data flow:
+#   Omada Controller ──► UDP syslog to host:514
+#       ──► Docker maps host:514 to container:1514
+#           ──► Promtail listens on :1514, parses each syslog frame
+#               ──► Pushes labelled log lines to Loki over HTTP
+#                   ──► Grafana queries Loki with {job="omada-logs"}
+#
+# Why this matters for AP flapping diagnosis:
+# The Omada Controller's built-in log viewer stores a maximum of ~7,650 entries.
+# On a busy network, roaming events fill this buffer in hours. Promtail bypasses
+# the ceiling by streaming every event permanently into Loki at the moment it occurs,
+# with millisecond-accurate timestamps from the syslog header.
+# ─────────────────────────────────────────────────────────────────────────────
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+# positions.yaml tracks which log lines have already been forwarded to Loki.
+# This prevents duplicate entries if Promtail restarts mid-stream.
+positions:
+  filename: /tmp/positions.yaml
+
+# Where to send the log lines after parsing.
+# "loki" is resolved by Docker's internal DNS to the Loki container.
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+
+  - job_name: omada-syslog
+    syslog:
+      # Internal container port. Docker Compose maps host port 514 → here.
+      listen_address: 0.0.0.0:1514
+      listen_protocol: udp
+      idle_timeout: 60s
+
+      # Parse RFC 5424 structured data fields (SD-ID, param names, values).
+      # Omada syslog includes structured data with event classification info.
+      label_structured_data: yes
+
+      # Use the timestamp embedded in the syslog header (not the Promtail arrival time).
+      # This preserves the exact sub-second event time from the Omada Controller.
+      use_incoming_timestamp: true
+
+      # Base labels applied to every log line received on this listener.
+      # Use {job="omada-logs"} in all Grafana/Loki queries for this data.
+      labels:
+        job: "omada-logs"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Relabeling promotes syslog header fields into searchable Loki labels.
+    # This makes Grafana queries like {host="OmadaController"} possible.
+    # ─────────────────────────────────────────────────────────────────────
+    relabel_configs:
+      # The hostname field from the syslog packet header → label "host"
+      - source_labels: ['__syslog_message_hostname']
+        target_label: 'host'
+      # The syslog severity level (info, warning, error, etc.) → label "level"
+      - source_labels: ['__syslog_message_severity']
+        target_label: 'level'
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Pipeline stages: parse and enrich log lines before storage.
+    # These run in order on each log line received.
+    # ─────────────────────────────────────────────────────────────────────
+    pipeline_stages:
+
+      # Stage 1: Extract structured fields from Omada syslog message bodies.
+      # Omada AP flapping / roaming log lines look like:
+      #   [Client Info] STA(aa:bb:cc:dd:ee:ff) is roaming from [Downstairs-AP] to [Upstairs-AP]
+      # The capture group names become available as labels in subsequent stages.
+      - regex:
+          expression: '(?P<event_type>\[[\w\s]+\])?\s*(?:STA\((?P<client_mac>[0-9a-f:]{17})\))?(?P<message>.*)'
+
+      # Stage 2: Promote extracted fields to Loki index labels.
+      # Enables filtering like: {job="omada-logs", event_type="[Client Info]"}
+      - labels:
+          event_type:
+          client_mac:
+
+      # Stage 3: Detect roaming events and tag them explicitly.
+      # The Omada Controller uses the phrase "is roaming" in its Client Info logs.
+      # Tagging these allows the Grafana State Timeline to filter to:
+      #   {job="omada-logs"} |= "is roaming"
+      - match:
+          selector: '{job="omada-logs"}'
+          pipeline_name: roam-detector
+          stages:
+            - regex:
+                expression: '(?i)(?P<is_roam>is roaming)'
+            - labels:
+                is_roam:

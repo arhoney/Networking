@@ -1,0 +1,61 @@
+services:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # ntopng — Passive Network Traffic Analyser
+  #
+  # ntopng performs deep-packet inspection on the traffic it sees arriving
+  # on the passive NIC (the one connected to the switch mirror port).
+  #
+  # CRITICAL SECURITY SETTINGS:
+  #   - The web UI is bound to 127.0.0.1 ONLY — not reachable from the LAN
+  #   - network_mode: host is required so ntopng can see the raw NIC
+  #   - Resource limits prevent a traffic spike from crashing the server
+  #
+  # ACCESS: Use an SSH tunnel from your laptop:
+  #   ssh -L 3001:127.0.0.1:3001 user@<server-ip>
+  #   Then open http://localhost:3001 in your browser
+  # ─────────────────────────────────────────────────────────────────────────
+  ntopng:
+    image: ntop/ntopng:stable
+    container_name: ntopng
+    restart: unless-stopped
+
+    # Host networking mode is required for ntopng to capture traffic directly
+    # from a physical NIC. Bridge networking would isolate the container from
+    # the host's network interfaces, making packet capture impossible.
+    #
+    # IMPLICATION: With host networking, port mappings in this file are ignored.
+    # Port binding is controlled entirely by ntopng.conf (using the -w flag).
+    # ntopng.conf sets the web UI to bind to 127.0.0.1:3001 only.
+    network_mode: host
+
+    volumes:
+      # Mount the config file into the container
+      - ./ntopng/ntopng.conf:/etc/ntopng/ntopng.conf:ro
+      # Persistent storage for ntopng's database (flow history, host profiles)
+      - ntopng-data:/var/lib/ntopng
+
+    # Resource limits — prevents ntopng from consuming the entire server
+    # during high-traffic events (e.g., a large file transfer or broadcast storm).
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+    # Health check — confirms ntopng's web interface is responding on localhost.
+    # If this fails 3 times in a row, Docker will restart the container.
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:3001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+# Persistent volume for ntopng's flow database and host profiles.
+# Deleting this volume clears all historical flow data.
+volumes:
+  ntopng-data:

@@ -1,0 +1,279 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
+    { "type": "datasource", "id": "loki", "name": "Loki", "version": "1.0.0" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "state-timeline", "name": "State timeline", "version": "" },
+    { "type": "panel", "id": "logs", "name": "Logs", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Two-tier AP flapping diagnostic dashboard. Top: RSSI signal drop profile per client (Prometheus, 10s resolution). Bottom: Roaming event state timeline and live syslog stream (Loki). Stack these panels to visually correlate signal degradation with roaming transitions.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(omada_client_rssi_dbm, name)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": false,
+        "name": "device",
+        "options": [],
+        "query": {
+          "query": "label_values(omada_client_rssi_dbm, name)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "label": "Device",
+        "type": "query"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 20,
+      "title": "TIER 1 — Signal Drop Profile (Prometheus · 10s resolution)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "RSSI signal strength in dBm for the selected device, updated every 10 seconds. Watch for the device dropping below -75 dBm without triggering a roam to the nearer AP — that is AP flapping or a sticky client. Cross-reference with the roaming events panel below to see whether the roam actually fires at the right threshold.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisLabel": "Signal Strength (dBm)",
+            "drawStyle": "line",
+            "fillOpacity": 12,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 4,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "thresholdsStyle": { "mode": "dashed+area" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": -80 },
+              { "color": "yellow", "value": -70 },
+              { "color": "green", "value": -55 }
+            ]
+          },
+          "unit": "dBm",
+          "min": -100,
+          "max": -20
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": ["last", "min", "mean"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "omada_client_rssi_dbm{name=~\"$device\"}",
+          "instant": false,
+          "legendFormat": "{{name}} → {{ap_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Client RSSI — Signal Strength per Device",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Percentage of frames the AP had to retransmit. Spikes above 10% correlate with the RSSI drop panels above and often precede a roaming event. High retry rates without a roam = client stuck on bad signal.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": true,
+            "thresholdsStyle": { "mode": "dashed" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 20 }
+            ]
+          },
+          "unit": "percent",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 11 },
+      "id": 4,
+      "options": {
+        "legend": { "calcs": ["last", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "omada_ap_tx_retry_rate * 100",
+          "legendFormat": "{{ap_name}}",
+          "refId": "A"
+        }
+      ],
+      "title": "AP TX Retry Rate (%)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Client count per access point. An imbalanced load — all clients on one AP while another is empty — can indicate band-steering problems or a sticky-client cluster.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineWidth": 2,
+            "showPoints": "auto",
+            "spanNulls": true
+          },
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 11 },
+      "id": 5,
+      "options": {
+        "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "omada_ap_client_count",
+          "legendFormat": "{{ap_name}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Client Count per Access Point",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 21,
+      "title": "TIER 2 — Roaming Event Timeline (Loki · millisecond accuracy)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "State timeline of roaming events extracted from Omada syslog. Each bar represents a detected 'is roaming' log line. Stack this panel directly beneath the RSSI chart and set both to the same time range — you can visually confirm whether the handshake fires at a sensible signal threshold or whether the client is lingering on a distant radio before dropping completely.\n\nIf bars are absent but the RSSI chart shows drops, the Omada Controller is not sending syslog to this stack. See GUIDE.md troubleshooting.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 19 },
+      "id": 2,
+      "options": {
+        "alignValue": "center",
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "mergeValues": true,
+        "rowHeight": 0.85,
+        "showValue": "auto",
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "{job=\"omada-logs\"} |= \"is roaming\"",
+          "queryType": "range",
+          "refId": "A",
+          "legendFormat": "Roaming Event"
+        }
+      ],
+      "title": "Roaming Events — AP Transition Timeline",
+      "type": "state-timeline"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Full live syslog stream from the Omada Controller. All Client Info events scroll here in real time. Use the search bar to filter to a specific MAC address or AP name. Roaming lines contain 'is roaming from [AP-Name] to [AP-Name]'.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 27 },
+      "id": 3,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "{job=\"omada-logs\"}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Live Omada Syslog Stream",
+      "type": "logs"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "tags": ["omada", "wifi", "roaming", "ap-flapping"],
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Wireless Client Roaming & Signal Health",
+  "uid": "omada-roaming-v2",
+  "version": 2
+}
