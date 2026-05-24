@@ -155,6 +155,65 @@ ip route get <controller-ip>   # should show dev eth0/enp*, not dev nordlynx
 
 ---
 
+## Docker Reference
+
+### Useful commands
+
+**Stack status and inspection:**
+```bash
+docker compose ps                          # status of all containers in this stack
+docker compose ls                          # all active stacks and their compose file paths
+docker inspect omada-exporter             # full config of one container
+docker inspect omada-exporter | grep -i "source\|bind\|volume"  # storage only
+```
+
+**Logs and live monitoring:**
+```bash
+docker compose logs prometheus             # recent output from a container
+docker compose logs omada-exporter --follow  # live log stream (Ctrl+C to exit)
+docker stats                               # real-time CPU/memory for all containers
+```
+
+**Get a shell inside a container:**
+```bash
+docker exec -it prometheus sh
+```
+
+**Volumes (persistent data):**
+```bash
+docker volume ls                           # list all volumes
+docker volume inspect phase-a-metrics_prometheus-data   # exact host path
+sudo du -sh /var/lib/docker/volumes/phase-a-metrics_prometheus-data   # disk usage
+```
+
+---
+
+### Where data is stored
+
+All data is stored **locally on this machine** — nothing goes to the cloud.
+
+There are two types of storage Docker uses here:
+
+**Named volumes** — managed by Docker, live under `/var/lib/docker/volumes/`:
+
+| Volume | Contents | Retention |
+|--------|----------|-----------|
+| `phase-a-metrics_prometheus-data` | All scraped metrics (RSSI, retry rates, client counts) | 90 days |
+| `phase-a-metrics_loki-data` | All Omada syslog events | Permanent |
+| `phase-a-metrics_grafana-data` | Dashboard state, users, settings | Permanent |
+
+**Bind mounts** — regular files in this repo, mounted directly into the containers:
+
+| File | Mounted into |
+|------|-------------|
+| `phase-a-metrics/prometheus/prometheus.yml` | Prometheus config |
+| `phase-a-metrics/loki/promtail-config.yml` | Promtail syslog config |
+| `phase-a-metrics/grafana/provisioning/` | Grafana datasources and dashboards |
+
+Editing a bind-mounted file takes effect after restarting the relevant container (`docker compose restart prometheus`). Volumes persist across restarts and survive `docker compose down` — only `docker compose down -v` deletes them.
+
+---
+
 ## Reference
 
 - Original design document: [`Draft.md`](Draft.md)
